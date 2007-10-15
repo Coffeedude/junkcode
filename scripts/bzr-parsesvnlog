@@ -1,0 +1,34 @@
+#!/usr/bin/perl
+
+######
+## Read output from 'svn log' from standard input
+## echo parsed logs ready for bzr commit
+sub ParseLog {
+	my( @commit_rev, $commit_log );
+
+	while ( <> ) {
+		if ( $_ =~ /^r[1-9]/ ) {
+			my(@rev_info) = split( '\|', $_ );
+
+			$rev_info[0] =~ s/^r//;
+			$rev_info[0] =~ s/\s+//g;
+			$rev_info[1] =~ s/\s+//g;
+			$rev_info[2] =~ s/^\s+//;
+			$rev_info[2] =~ s/\s+$//;
+
+			print "$rev_info[1]$ENV{'EMAILDOMAIN'} (r$rev_info[0])  $rev_info[2]\n";
+
+			<>;
+			while ( <> ) {
+				chomp( $_ );
+				last if ( $_ =~ /^[\-]+$/ );
+				$_ =~ s/^\s+//;
+				print "    $_\n";
+			}
+
+			print "\n";
+		}
+	}
+}
+
+&ParseLog;

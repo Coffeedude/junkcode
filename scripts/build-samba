@@ -1,0 +1,97 @@
+#!/bin/sh
+
+SRCDIR=$1
+if [ "x${SRCDIR}" = "x" ]; then
+	SRCDIR=.
+fi
+
+TEST_FLAGS=""
+if [ "x$2" = "xtest" ]; then
+	TEST_FLAGS="--enable-socket-wrapper --with-smbtorture4-path=$HOME/bin/smbtorture4"
+fi
+	
+
+EXTRA_FLAGS="--with-smbmount --with-cifsmount --with-dnsupdate"
+IDMAP_PLUGINS="idmap_ad,idmap_rid"
+DIR_FLAGS="--localstatedir=/var/lib/samba --with-piddir=/var/run\
+  --with-logfilebase=/var/log/samba --with-privatedir=/etc/samba\
+  --with-configdir=/etc/samba --with-lockdir=/var/lib/samba"
+CONFIG_OPTS="--prefix=/opt/samba --enable-developer --disable-pie \
+  --with-pam --with-pam_smbpass --with-acl-support --with-syslog\
+  --with-quotas --with-shared-modules=${IDMAP_PLUGINS}"
+
+CONFIGURE_OPTS="--enable-debug ${CONFIG_OPTS} ${EXTRA_FLAGS} ${DIR_FLAGS} ${TEST_FLAGS}"
+
+## compiler and flags
+CFLAGS=""
+CPPFLAGS=""
+LDFLAGS=""
+CC="gcc"
+
+#type ccache > /dev/null
+#if [ $? = 0 ]; then
+#	CC="ccache gcc"
+#	export CCACHE_DIR="/misc/src/jerry/.ccache"
+#	export CCACHE_LOGFILE="${CCACHE_DIR}/ccache.log"
+#
+#	if [ ! -d ${CCACHE_DIR} ]; then
+#		mkdir -p ${CCACHE_DIR}
+#	fi
+#fi
+
+## required library paths
+DIRPATH=""
+for dir in $DIRPATH ; do
+	CPPFLAGS="$CPPFLAGS -I$dir/include"
+	CFLAGS="$CFLAGS -Wl,-rpath,$dir/lib"
+	LDFLAGS="$LDFLAGS -L$dir/lib"
+done
+
+CC_VERSION=`${CC} --version | head -1 | awk '{print $3}'`
+CC_MAJOR=`echo ${CC_VERSION} | cut -d. -f 1`
+CC_MINOR=`echo ${CC_VERSION} | cut -d. -f 2`
+
+## check for gcc 3.4 or later
+MAKE_BASICS="proto"
+if [ ${CC_MAJOR} -ge 3 ]; then
+	if [ ${CC_MAJOR} -gt 3 -o ${CC_MINOR} -ge 4 ]; then
+		MAKE_BASICS="${MAKE_BASICS} pch"
+	fi
+fi
+
+## check for parallel builds
+NUM_CPUS=`cat /proc/cpuinfo | grep ^processor | wc -l`
+MAKE_ARGS=""
+if [ ${NUM_CPUS} -gt 1 ]; then
+	MAKE_ARGS="-j${NUM_CPUS}"
+fi
+
+echo "SRCDIR=${SRCDIR}"
+echo "CPPFLAGS=${CPPFLAGS}"
+echo "CFLAGS=${CFLAGS}"
+echo "LDFLAGS=${LDFLAGS}"
+echo "CC=${CC}"
+echo "NUM_CPUS=${NUM_CPUS}"
+echo "CC_VERSION=${CC_MAJOR}.${CC_MINOR}"
+echo "CONFIGURE_OPTS=${CONFIGURE_OPTS}"
+export CPPFLAGS CFLAGS LDFLAGS CC
+
+## configure && build
+if [ ! -f ${SRCDIR}/configure ]; then
+	(cd ${SRCDIR} && ./autogen.sh ) || exit 1
+fi
+${SRCDIR}/configure ${CONFIGURE_OPTS}
+
+if [ $? -ne 0 ]; then
+	echo "configure failed.  Exiting...."
+	exit 1
+fi
+
+make showlayout
+make ${MAKE_BASICS}
+make ${MAKE_ARGS}
+
+echo "directory ${SRCDIR}" >> .gdbinit
+echo "build-samba ${SRCDIR}" > .rebuild-samba
+
+

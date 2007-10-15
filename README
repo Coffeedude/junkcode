@@ -1,0 +1,15 @@
+##
+## README
+## Gerald Carter <jerry@samba.org>
+##
+
+This is just a collection of various pieces of code I've written for
+testing various things.  It has no use or meaning other than
+I like to keep it around rather than re-inventing it every time 
+I need something.
+
+All code is licensed under the GNU General Public License Version 2.
+
+More details on Bazaar-NG (the DSCM I'm using for this) can be found 
+at http://bazaar-vcs.org/.
+

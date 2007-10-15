@@ -1,0 +1,173 @@
+#!/bin/bash
+
+#####################################################################
+## copyright Gerald (Jerry) Carter    2006
+##
+## simple script to apply changesets from an svn tree to a 
+## bzr mirror
+## Usage: bzr-svnmirror <bzr_dir> [bulk|revision_no]
+##    bzr_dir is the absolute path to the BZR mirror repo
+##    the second (optional) patameter can be either the word
+##        "bulk" or a specific revision number.  In the former 
+##        case, the script will apply one single patch to 
+##        bring the bzr mirror upt to date.  If you specify 
+##        a revision, the mirror will be brought up incrementally
+##        to that point.
+##
+##     If you only pass in the bzr directory, the script will 
+##     perform an incremental sync, applying each svn changeset
+##     from the most recent sync.
+#####################################################################
+
+## Set the mail domain if not already present in the environment
+
+if [ "x${EMAILDOMAIN}" = "x" ]; then
+	export EMAILDOMAIN="@samba.org"
+fi
+
+#####
+## given a branch like SAMBA_3_0
+## given a path like /branches/SAMBA_3_0/source/libsmb/foo.c
+## return source/libsmb/foo.c
+
+function GetLocalFile {
+	branch=$1
+	path=$2
+
+	i=1;
+	p=${path}
+	while true; do
+		r=`echo ${p} | cut -d/ -f 2-`
+		p=`echo ${p} | cut -d/ -f 1`
+		i=$((i+=1))
+
+		if [ "x$r" = "x" -o "x$r" = "x$p" ]; then
+			return 1;
+		fi
+
+		if [ "x$p" = "x${branch}" ]; then
+			## strip (from ...) in svn merges
+			echo "`echo ${path} | cut -d/ -f $i- | sed 's/\s*(.*)//'`"
+			return 0
+		fi
+
+		p=$r
+	done
+
+	return 0;
+}
+
+
+#####
+## given a bzr repo path like /misc/src/bzr/SAMBA_3_0.bzr
+## given an option revision number like 15858
+## apply the diff between the most recent svn sync and the 
+##    new revision
+
+function BzrSvnMirror {
+	REPO=$1
+	NEWREV=$2
+
+	OLDREV=`cat ${REPO}/REVISION  | grep "Last Changed Rev:" | cut -d: -f2 | sed 's/^\s*//'`
+	if [ "x${NEWREV}" != "x" ]; then
+		svn info -r${NEWREV} ${SVNURL} > /tmp/revision.$$
+	else
+		svn info ${SVNURL} > /tmp/revision.$$
+	fi
+	NEWREV=`cat /tmp/revision.$$ | grep "Last Changed Rev:" | cut -d: -f2 | sed 's/^\s*//'`
+
+	x=`echo ${SVNURL} | awk -F/ '{print NF}'`
+	BRANCH=`echo ${SVNURL} | cut -d / -f ${x}`
+
+	svn log -v -r${NEWREV}:$((${OLDREV}+1)) ${SVNURL} > /tmp/svn.log.$$
+	cat /tmp/svn.log.$$ |grep -v "[[:space:]]*[ADM].*/" | bzr-parsesvnlog > /tmp/commit.$$
+
+	echo "Applying ${BRANCH} r${NEWREV}..."
+
+	## patch files
+	svn diff -r${OLDREV}:${NEWREV} ${SVNURL} | (cd ${REPO} && patch -p0)
+	mv -f /tmp/revision.$$ ${REPO}/REVISION
+
+	## Next Remove files (sort in reverse order to ensure we walk
+	## from the lower directories to the top) 
+	for f in `cat /tmp/svn.log.$$ | grep "[[:space:]]*D /.*${BRANCH}" | awk '{print $2}' | sort -r`; do
+		f=`GetLocalFile ${BRANCH} $f`
+		if [ $? -ne 0 ]; then
+			continue;
+		fi
+		echo "removing $f"
+		( cd ${REPO} &&  bzr revert $f &&  bzr remove $f )
+		/bin/rm -rf $f
+	done
+
+	## Finally add any new files
+	for f in `cat /tmp/svn.log.$$ | grep "[[:space:]]*A /.*${BRANCH}" | awk '{print $2}'`; do
+		f=`GetLocalFile ${BRANCH} $f`
+		if [ $? -ne 0 ]; then
+			continue;
+		fi
+		( cd ${REPO} && bzr add $f )
+	done 
+
+	/bin/rm -f /tmp/svn.log.$$
+
+	bzr diff ${REPO} | diffstat
+
+	## Try to set the BZREMAIL environment variable before we commit
+	## (unless this is a bulk merge)
+	unset BZR_EMAIL
+	num_emails=`grep "^[a-z].*${EMAILDOMAIN}" /tmp/commit.$$| wc -l`
+	if [ ${num_emails} -eq 1 ]; then
+		export BZR_EMAIL=`head -1 /tmp/commit.$$ | awk '{print $1}'`
+	fi
+	(cd ${REPO} && bzr commit -F /tmp/commit.$$)
+	/bin/rm -f /tmp/commit.$$
+}
+
+#####################################################################
+##                        MAIN DRIVER                              ##
+#####################################################################
+
+if [ "x$1" = "x" ]; then
+        echo "Usage: $0 <bzr_dir> [bulk]"
+        exit 1
+fi
+
+## check for a valid bzr repo
+
+if [ ! -d $1 ]; then
+        echo "$1 is not a directory!"
+        exit 2
+fi
+bzr info $1 2>&1 > /dev/null
+if [ $? -ne 0 ]; then
+        echo "$1 is not a bzr repo!"
+        exit 2
+fi
+
+REPO=$1
+SVNURL=`cat ${REPO}/REVISION  | grep "URL:" | cut -d' ' -f2 | sed 's/^\s*//'`
+OLDREV=`cat ${REPO}/REVISION  | grep "Last Changed Rev:" | cut -d: -f2 | sed 's/^\s*//'`
+TREETOP=HEAD
+
+## Maybe this just a mega patch?
+## Pass in the 3rd arg as a possible revision number.  
+## If non was specified, this won't hurt.
+
+if [ "x$2" = "xbulk" ]; then
+	BzrSvnMirror ${REPO} $3
+	exit 0
+fi
+
+## or maybe its a revision number?
+
+if [ "x$2" != "x" ]; then
+	TREETOP=$2
+fi
+
+## iterate over a series of SVN commits
+
+for r in `svn log -r$((${OLDREV}+1)):${TREETOP} ${SVNURL} | grep ^r[1-9].*\| | awk '{print $1}' | sed 's/r//'`; do
+	BzrSvnMirror ${REPO} $r
+	echo " "
+done

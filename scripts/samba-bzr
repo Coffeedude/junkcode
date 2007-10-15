@@ -1,0 +1,44 @@
+#!/bin/sh
+
+PATH=/usr/bin:/bin:$HOME/bin:/usr/sbin/sbin:/usr/local/bin:/usr/local/sbin
+
+BZRROOT=/data/src/mirror/bzr/
+BZRDIR="SAMBA_3_0_RELEASE.bzr \
+	SAMBA_3_0_23.bzr \
+	SAMBA_3_0_24.bzr \
+	SAMBA_3_0_25.bzr \
+	SAMBA_3_0_26.bzr \
+	SAMBA_3_0_MAINT.bzr \
+	SAMBA_3_0.bzr \
+	SAMBA_3_0-lightweight.bzr \
+	SAMBA_3_2.bzr \
+	SAMBA_3_2-lightweight.bzr \
+	SAMBA_3_2_0.bzr \
+	SAMBA_4_0.bzr"
+
+echo "Updating local svn samba copy..."
+rsync -av -e ssh --delete jerry@dp.samba.org:/home/svn/samba/ /data/src/mirror/svn/samba/
+
+if [ $? -ne 0 ]; then
+	echo "Rsync of svn repo failed!  Aborting BZR mirror process!"
+	exit 1
+fi
+
+for d in ${BZRDIR}; do
+	echo "Running mirror script on ${BZRROOT}/${d}"
+	orig_mode_time=`stat -c %Y ${BZRROOT}/${d}/REVISION`
+	bzr-svnmirror ${BZRROOT}/${d}
+	new_mod_time=`stat -c %Y ${BZRROOT}/${d}/REVISION`
+	if [ $orig_mode_time -lt $new_mod_time ]; then
+		if [ "x$1" = "xpublish" ]; then
+			echo "Setting permissions for publishing on ${d}..."
+			set_world_perms ${BZRROOT}/${d}
+			# ( cd ${BZRROOT}/${d} && bzr rspush dp.samba.org:~/public_html/bzr/${d} )
+		fi
+	fi
+done
+
+if [ "x$1" = "xpublish" ]; then
+	rsync -av -e ssh --delete ${BZRROOT}/ jerry@git.samba.org:/data/bzr/samba/
+fi
+
