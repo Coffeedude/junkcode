@@ -1,0 +1,9 @@
+<project name="Simple" default="build">
+   <target name="build" description="compiles the source code">
+        <csc target="exe" output="helloworld.exe">
+           <sources>
+              <include name="hello.cs"/>
+           </sources>
+     </csc>
+   </target>
+</project>
