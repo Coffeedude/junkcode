@@ -15,6 +15,7 @@
 #include <sys/user.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <float.h>
 
 int main (
     int argc,
@@ -29,12 +30,20 @@ int main (
     kvm_t *kd = NULL;
     struct kinfo_proc *procs = NULL;
     int proc_count = 0;
+    int percentUtilization = 0;
+    struct rlimit rlim = { 0 };
 
     kd = kvm_open(NULL, NULL, NULL, 0, NULL);
     if (kd == NULL)
     {
         fprintf(stderr, "Failed to open kvm!\n");
         return 1;
+    }
+
+    if (getrlimit(RLIMIT_AS, &rlim) == -1)
+    {
+        fprintf(stderr, "Failed to retreive process memory limits (%s)\n", strerror(errno));
+        return 2;
     }
 
     printf("Process statistics:\n");
@@ -45,16 +54,6 @@ int main (
 
         memset(&stats, 0x0, sizeof(stats));
 
-#if 0
-        err = getrusage(RUSAGE_SELF, &stats);
-        if (err)
-        {
-            fprintf(stderr, "getrusage() failed!  (%s)\n", strerror(err));
-            return err;
-        }
-        printf("  Max RSS (%d) = %ld\n", i, stats.ru_maxrss);
-#endif
-
         proc_count = 0;
         procs = kvm_getprocs(kd, KERN_PROC_PID, (int)getpid(), &proc_count);
         if (procs == NULL || proc_count == 0)
@@ -63,7 +62,12 @@ int main (
             return 2;
         }
 
-        printf("  Max RSS (%d) = %ldK\n", i, procs[0].ki_size>>10);
+        percentUtilization  = ((double)procs[0].ki_size / (double)rlim.rlim_max) * 100;
+        printf(
+            "  %d%% memory utilization (%dK / %dK)\n",
+            percentUtilization,
+            procs[0].ki_size>>10,
+            rlim.rlim_max>>10);
 
         sleep (2);
 
