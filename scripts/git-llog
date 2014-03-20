@@ -1,0 +1,5 @@
+#!/bin/bash
+
+#!/bin/bash
+
+git log --pretty=format:"%C(cyan bold)%h%Creset %C(green bold)%aN (%ar)%Creset %C(blue bold)(%cn (%cr))%Creset -%x09%s" "$@" | perl -nle 's/ W. Carter| Koropoff| Popovich| Haskin| Szczesniak| Almeida//g; print $_' | less -R -E -X
