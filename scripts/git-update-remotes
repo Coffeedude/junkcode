@@ -1,0 +1,9 @@
+#!/bin/bash
+
+REMOTES=`git branch -r | sed 's#/.*##g' | sort -u`
+
+for r in ${REMOTES}
+do
+    echo "Updating remote: $r..."
+    (git fetch $r && git remote prune $r) || exit 1
+done
