@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys, os, getopt, csv
 
 def print_usage(command):
@@ -11,6 +13,9 @@ def print_usage(command):
 
 def print_report_readers(accts):
     for k in accts.keys():
+        if accts[k].has_key('admin'):
+            continue
+
         if len(accts[k]['boards'].keys()) == 0:
             print k
 
@@ -35,11 +40,7 @@ def print_report_stale(accts):
 ## MAIN
 ##
 optlist, args = getopt.getopt(sys.argv[1:], '',
-                              ['roles=', 
-                               'updates=', 
-                               'boards=',
-                               'report=',
-                               'help'])
+                    ['roles=', 'updates=', 'boards=', 'report=', 'help'])
 
 options = {}
 for k,v in optlist:
@@ -49,9 +50,14 @@ if options.has_key('--help'):
     print_usage(sys.argv[0])
     sys.exit(1)
 
-if not (options.has_key('--roles') and options.has_key('--updates') and options.has_key('--boards')):
-    print_usage(sys.argv[0])
-    sys.exit(1)
+if not options.has_key('--roles'):
+    options['--roles'] = "./Users_and_their_Board_Roles.csv"
+
+if not options.has_key('--updates'):
+    options['--updates'] = "./Most_Recent_Write_Activity_for_each_active_user.csv"
+
+if not options.has_key('--boards'):
+    options['--boards'] = "./MostRecentActivityPerUserAndBoard.csv"
 
 if not options.has_key('--report'):
     options['--report'] = "Readers"
@@ -68,6 +74,11 @@ updates = csv.DictReader(f_updates)
 # BoardTitle,UserName,LastName,FirstName,CreationDate,IsOrganizationAdmin,BoardRole,MostRecentWriteActivityUTCTime
 boards = csv.DictReader(f_boards)
 
+# Create a dictionary of accounts with the keys:
+#  'created'
+#  'last_write'
+#  'boards' (dict of BoardTitle with Keys 'role' and 'last_write'
+
 accounts = {}
 for row in updates:
    accounts[row['UserName']] = {}
@@ -75,7 +86,13 @@ for row in updates:
    accounts[row['UserName']]['last_write'] = row['MostRecentWriteOrUpdateActivityUTCTime']
    accounts[row['UserName']]['boards'] = {}
 
-for row in roles: 
+for row in roles:
+    if row['IsOrganizationAdmin'] == 'Yes':
+        accounts[row['UserName']]['admin'] = True
+
+    if row['BoardRole'] == "No Access" or row['BoardRole'] == "Reader":
+        continue
+
     accounts[row['UserName']]['boards'][row['BoardTitle']] = {}
     if len(row['BoardRole']) == 0:
         accounts[row['UserName']]['boards'][row['BoardTitle']]['role'] = 'Creator'
@@ -83,6 +100,8 @@ for row in roles:
         accounts[row['UserName']]['boards'][row['BoardTitle']]['role'] = row['BoardRole']
 
 for row in boards:
+    if row['BoardRole'] == "No Access" or row['BoardRole'] == "Reader":
+        continue
     accounts[row['UserName']]['boards'][row['BoardTitle']]['last_write'] = row['MostRecentWriteActivityUTCTime']
 
 acct_readers = []
