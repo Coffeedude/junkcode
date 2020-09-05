@@ -31,17 +31,17 @@ my ( $nfs_server, $nfs_path, $maildomain );
 ##############################################################################
 ## Script defaults
 
-$server   	= "ldap";
-$base           = "dc=plainjoe,dc=org";
+$server   	= "ldap.home.plainjoe.org";
+$base           = "dc=home,dc=plainjoe,dc=org";
 $people   	= "ou=people,$base";
 $group          = "ou=group,$base";
 $binddn   	= "cn=diradmin,ou=people,$base";
 $bindpw   	= "";
-$home_dir 	= "/home/mist/";
+$home_dir 	= "/home/nfs2/";
 $shell    	= "/bin/bash";
 $default_group 	= "guest";
 $password       = "*";
-$nfs_server     = "ldap.plainjoe.org";
+$nfs_server     = "nas1.home.plainjoe.org";
 # $maildomain	= "plainjoe.org";
 
 ## End of script defaults
